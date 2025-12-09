@@ -2,15 +2,35 @@ from datetime import datetime
 from typing import List, Optional
 from database import Database
 from models import Lieferant, Artikel, Kunde, Projekt, Lagerbestand, Verkauf
+from logger_config import app_logger
+from exceptions import (
+    LieferantError, ArtikelError, LagerError, VerkaufError, 
+    ValidationError, NotFoundError, IntegrityError, DatabaseError
+)
 
 class InventoryManager:
     def __init__(self):
+        app_logger.info("Initialisiere InventoryManager")
         self.db = Database()
+        app_logger.info("InventoryManager erfolgreich initialisiert")
     
     # Lieferanten Management
     def lieferant_hinzufuegen(self, name: str, kontakt: str = "") -> int:
-        query = "INSERT INTO lieferanten (name, kontakt) VALUES (?, ?)"
-        return self.db.execute_insert(query, (name, kontakt))
+        if not name or not name.strip():
+            raise ValidationError("Lieferantenname darf nicht leer sein")
+        
+        name = name.strip()
+        app_logger.info(f"Füge Lieferant hinzu: {name}")
+        
+        try:
+            query = "INSERT INTO lieferanten (name, kontakt) VALUES (?, ?)"
+            lieferant_id = self.db.execute_insert(query, (name, kontakt))
+            app_logger.info(f"Lieferant erfolgreich hinzugefügt: ID {lieferant_id}")
+            return lieferant_id
+        except DatabaseError as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise LieferantError(f"Lieferant '{name}' existiert bereits")
+            raise LieferantError(f"Fehler beim Hinzufügen des Lieferanten: {e}")
     
     def lieferanten_auflisten(self) -> List[Lieferant]:
         query = "SELECT id, name, kontakt FROM lieferanten ORDER BY name"
@@ -26,14 +46,38 @@ class InventoryManager:
         return None
     
     def lieferant_aktualisieren(self, lieferant_id: int, name: str, kontakt: str = "") -> bool:
+        if not name or not name.strip():
+            raise ValidationError("Lieferantenname darf nicht leer sein")
+        if lieferant_id <= 0:
+            raise ValidationError("Ungültige Lieferanten-ID")
+        
+        name = name.strip()
+        app_logger.info(f"Aktualisiere Lieferant ID {lieferant_id}: {name}")
+        
+        # Prüfen ob Lieferant existiert
+        if not self.lieferant_finden(lieferant_id):
+            raise NotFoundError(f"Lieferant mit ID {lieferant_id} nicht gefunden")
+        
         try:
             query = "UPDATE lieferanten SET name = ?, kontakt = ? WHERE id = ?"
             self.db.execute_query(query, (name, kontakt, lieferant_id))
+            app_logger.info(f"Lieferant ID {lieferant_id} erfolgreich aktualisiert")
             return True
-        except:
-            return False
+        except DatabaseError as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise LieferantError(f"Lieferant '{name}' existiert bereits")
+            raise LieferantError(f"Fehler beim Aktualisieren des Lieferanten: {e}")
     
     def lieferant_loeschen(self, lieferant_id: int) -> bool:
+        if lieferant_id <= 0:
+            raise ValidationError("Ungültige Lieferanten-ID")
+        
+        app_logger.info(f"Lösche Lieferant ID {lieferant_id}")
+        
+        # Prüfen ob Lieferant existiert
+        if not self.lieferant_finden(lieferant_id):
+            raise NotFoundError(f"Lieferant mit ID {lieferant_id} nicht gefunden")
+        
         try:
             # Prüfen ob Artikel mit diesem Lieferanten existieren
             artikel_check = self.db.execute_query(
@@ -41,22 +85,43 @@ class InventoryManager:
                 (lieferant_id,)
             )
             if artikel_check[0][0] > 0:
-                return False
+                raise IntegrityError(f"Lieferant kann nicht gelöscht werden: {artikel_check[0][0]} Artikel sind zugeordnet")
             
             query = "DELETE FROM lieferanten WHERE id = ?"
             self.db.execute_query(query, (lieferant_id,))
+            app_logger.info(f"Lieferant ID {lieferant_id} erfolgreich gelöscht")
             return True
-        except:
-            return False
+        except DatabaseError as e:
+            raise LieferantError(f"Fehler beim Löschen des Lieferanten: {e}")
     
     # Artikel Management
     def artikel_hinzufuegen(self, artikelnummer: str, bezeichnung: str, lieferant_id: int, mindestmenge: int = 1) -> bool:
+        if not artikelnummer or not artikelnummer.strip():
+            raise ValidationError("Artikelnummer darf nicht leer sein")
+        if not bezeichnung or not bezeichnung.strip():
+            raise ValidationError("Artikelbezeichnung darf nicht leer sein")
+        if lieferant_id <= 0:
+            raise ValidationError("Ungültige Lieferanten-ID")
+        if mindestmenge < 0:
+            raise ValidationError("Mindestmenge darf nicht negativ sein")
+        
+        artikelnummer = artikelnummer.strip()
+        bezeichnung = bezeichnung.strip()
+        app_logger.info(f"Füge Artikel hinzu: {artikelnummer} - {bezeichnung}")
+        
+        # Prüfen ob Lieferant existiert
+        if not self.lieferant_finden(lieferant_id):
+            raise NotFoundError(f"Lieferant mit ID {lieferant_id} nicht gefunden")
+        
         try:
             query = "INSERT INTO artikel (artikelnummer, bezeichnung, lieferant_id, mindestmenge) VALUES (?, ?, ?, ?)"
             self.db.execute_insert(query, (artikelnummer, bezeichnung, lieferant_id, mindestmenge))
+            app_logger.info(f"Artikel {artikelnummer} erfolgreich hinzugefügt")
             return True
-        except:
-            return False
+        except DatabaseError as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise ArtikelError(f"Artikel '{artikelnummer}' existiert bereits")
+            raise ArtikelError(f"Fehler beim Hinzufügen des Artikels: {e}")
     
     def artikel_auflisten(self) -> List[tuple]:
         query = """

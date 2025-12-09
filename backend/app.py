@@ -8,24 +8,55 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from inventory_manager import InventoryManager
 from reports import ReportGenerator
+from logger_config import app_logger
+from exceptions import (
+    LagerverwaltungError, LieferantError, ArtikelError, LagerError, 
+    VerkaufError, ValidationError, NotFoundError, IntegrityError
+)
 
 app = Flask(__name__)
 CORS(app)
 
+app_logger.info("Starte Lagerverwaltung API")
 inventory = InventoryManager()
 reports = ReportGenerator()
+app_logger.info("API-Server erfolgreich initialisiert")
+
+# Error Handler für Custom Exceptions
+@app.errorhandler(ValidationError)
+def handle_validation_error(error):
+    app_logger.warning(f"Validierungsfehler: {error.message}")
+    return jsonify({'error': error.message, 'type': 'validation_error'}), 400
+
+@app.errorhandler(NotFoundError)
+def handle_not_found_error(error):
+    app_logger.info(f"Ressource nicht gefunden: {error.message}")
+    return jsonify({'error': error.message, 'type': 'not_found_error'}), 404
+
+@app.errorhandler(IntegrityError)
+def handle_integrity_error(error):
+    app_logger.warning(f"Integritätsfehler: {error.message}")
+    return jsonify({'error': error.message, 'type': 'integrity_error'}), 409
+
+@app.errorhandler(LagerverwaltungError)
+def handle_lagerverwaltung_error(error):
+    app_logger.error(f"Anwendungsfehler: {error.message}")
+    return jsonify({'error': error.message, 'type': 'application_error'}), 500
 
 @app.errorhandler(404)
 def not_found(error):
+    app_logger.info(f"404 Fehler: {request.url}")
     return jsonify({'error': 'Endpoint nicht gefunden'}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
+    app_logger.error(f"Interner Serverfehler: {error}")
     return jsonify({'error': 'Interner Serverfehler'}), 500
 
 # Lieferanten API
 @app.route('/api/lieferanten', methods=['GET'])
 def get_lieferanten():
+    app_logger.debug("GET /api/lieferanten aufgerufen")
     try:
         lieferanten = inventory.lieferanten_auflisten()
         return jsonify([{
@@ -34,28 +65,27 @@ def get_lieferanten():
             'kontakt': l.kontakt
         } for l in lieferanten])
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        app_logger.error(f"Unerwarteter Fehler bei GET /api/lieferanten: {e}")
+        return jsonify({'error': 'Interner Serverfehler'}), 500
 
 @app.route('/api/lieferanten', methods=['POST'])
 def create_lieferant():
-    try:
-        data = request.get_json(force=True, silent=True)
-        if data is None:
-            return jsonify({'error': 'JSON-Daten erforderlich'}), 400
-        if not data or 'name' not in data:
-            return jsonify({'error': 'Name ist erforderlich'}), 400
-        
-        lieferant_id = inventory.lieferant_hinzufuegen(
-            data['name'], 
-            data.get('kontakt', '')
-        )
-        return jsonify({
-            'id': lieferant_id,
-            'name': data['name'],
-            'kontakt': data.get('kontakt', '')
-        }), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    app_logger.debug("POST /api/lieferanten aufgerufen")
+    data = request.get_json(force=True, silent=True)
+    if data is None:
+        raise ValidationError('JSON-Daten erforderlich')
+    if not data or 'name' not in data:
+        raise ValidationError('Name ist erforderlich')
+    
+    lieferant_id = inventory.lieferant_hinzufuegen(
+        data['name'], 
+        data.get('kontakt', '')
+    )
+    return jsonify({
+        'id': lieferant_id,
+        'name': data['name'],
+        'kontakt': data.get('kontakt', '')
+    }), 201
 
 @app.route('/api/lieferanten/<int:lieferant_id>', methods=['GET'])
 def get_lieferant(lieferant_id):
