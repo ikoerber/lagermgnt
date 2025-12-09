@@ -99,6 +99,26 @@ class Database:
                 )
             ''')
             
+            # Users Tabelle
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    active BOOLEAN DEFAULT 1
+                )
+            ''')
+            
+            # Blacklisted Tokens Tabelle
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS blacklisted_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    jti TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL
+                )
+            ''')
+            
             conn.commit()
     
     def execute_query(self, query, params=None):

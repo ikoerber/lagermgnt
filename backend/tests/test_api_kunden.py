@@ -1,16 +1,17 @@
 import pytest
+from auth_helper import client_with_auth
 
-def test_get_kunden_returns_list(client):
-    response = client.get('/api/kunden')
+def test_get_kunden_returns_list(client_with_auth):
+    response = client_with_auth.auth.authenticated_get('/api/kunden')
     assert response.status_code == 200
     assert isinstance(response.get_json(), list)
 
-def test_create_kunde_success(client):
+def test_create_kunde_success(client_with_auth):
     data = {
         'name': 'Firma ABC GmbH',
         'kontakt': 'info@firma-abc.de'
     }
-    response = client.post('/api/kunden', json=data)
+    response = client_with_auth.auth.authenticated_post('/api/kunden', json=data)
     assert response.status_code == 201
     
     response_data = response.get_json()
@@ -18,22 +19,22 @@ def test_create_kunde_success(client):
     assert response_data['name'] == data['name']
     assert response_data['kontakt'] == data['kontakt']
 
-def test_create_kunde_without_name(client):
+def test_create_kunde_without_name(client_with_auth):
     data = {'kontakt': 'test@test.de'}
-    response = client.post('/api/kunden', json=data)
+    response = client_with_auth.auth.authenticated_post('/api/kunden', json=data)
     assert response.status_code == 400
     assert 'error' in response.get_json()
 
-def test_create_kunde_minimal_data(client):
+def test_create_kunde_minimal_data(client_with_auth):
     data = {'name': 'Minimaler Kunde'}
-    response = client.post('/api/kunden', json=data)
+    response = client_with_auth.auth.authenticated_post('/api/kunden', json=data)
     assert response.status_code == 201
     
     response_data = response.get_json()
     assert response_data['name'] == 'Minimaler Kunde'
     assert response_data['kontakt'] == ''
 
-def test_get_kunden_after_create(client):
+def test_get_kunden_after_create(client_with_auth):
     # Mehrere Kunden anlegen
     kunden_data = [
         {'name': 'Kunde A', 'kontakt': 'a@test.de'},
@@ -42,10 +43,10 @@ def test_get_kunden_after_create(client):
     ]
     
     for kunde in kunden_data:
-        response = client.post('/api/kunden', json=kunde)
+        response = client_with_auth.auth.authenticated_post('/api/kunden', json=kunde)
         assert response.status_code == 201
     
-    response = client.get('/api/kunden')
+    response = client_with_auth.auth.authenticated_get('/api/kunden')
     assert response.status_code == 200
     
     kunden = response.get_json()
@@ -54,10 +55,10 @@ def test_get_kunden_after_create(client):
     assert 'Kunde B' in kunden_namen
     assert 'Kunde C' in kunden_namen
 
-def test_create_kunde_empty_body(client):
-    response = client.post('/api/kunden', json={})
+def test_create_kunde_empty_body(client_with_auth):
+    response = client_with_auth.auth.authenticated_post('/api/kunden', json={})
     assert response.status_code == 400
 
-def test_create_kunde_no_json(client):
-    response = client.post('/api/kunden')
+def test_create_kunde_no_json(client_with_auth):
+    response = client_with_auth.auth.authenticated_post('/api/kunden')
     assert response.status_code == 400

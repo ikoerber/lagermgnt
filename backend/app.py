@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, get_jwt
 from datetime import datetime
 import os
 import sys
@@ -8,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from inventory_manager import InventoryManager
 from reports import ReportGenerator
+from auth_service import AuthService
 from logger_config import app_logger
 from exceptions import (
     LagerverwaltungError, LieferantError, ArtikelError, LagerError, 
@@ -17,10 +19,43 @@ from exceptions import (
 app = Flask(__name__)
 CORS(app)
 
+# JWT Konfiguration
+app.config['JWT_SECRET_KEY'] = 'your-super-secret-jwt-key-change-in-production'  # In Produktion ändern!
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False  # Wird durch AuthService gesteuert
+jwt = JWTManager(app)
+
 app_logger.info("Starte Lagerverwaltung API")
 inventory = InventoryManager()
 reports = ReportGenerator()
+auth_service = AuthService()
 app_logger.info("API-Server erfolgreich initialisiert")
+
+# JWT Callbacks
+@jwt.token_in_blocklist_loader
+def check_if_token_revoked(jwt_header, jwt_payload):
+    """Prüfe ob Token auf der Blacklist steht"""
+    jti = jwt_payload['jti']
+    return auth_service.is_token_blacklisted(jti)
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    app_logger.warning(f"Abgelaufener Token verwendet: {jwt_payload.get('sub', 'unknown')}")
+    return jsonify({'error': 'Token ist abgelaufen', 'type': 'token_expired'}), 401
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    app_logger.warning(f"Ungültiger Token: {error}")
+    return jsonify({'error': 'Ungültiger Token', 'type': 'invalid_token'}), 401
+
+@jwt.unauthorized_loader
+def missing_token_callback(error):
+    app_logger.info(f"Fehlender Token: {error}")
+    return jsonify({'error': 'Authorization Token erforderlich', 'type': 'missing_token'}), 401
+
+@jwt.revoked_token_loader
+def revoked_token_callback(jwt_header, jwt_payload):
+    app_logger.warning(f"Widerrufener Token verwendet: {jwt_payload.get('sub', 'unknown')}")
+    return jsonify({'error': 'Token wurde widerrufen', 'type': 'token_revoked'}), 401
 
 # Error Handler für Custom Exceptions
 @app.errorhandler(ValidationError)
@@ -53,8 +88,103 @@ def internal_error(error):
     app_logger.error(f"Interner Serverfehler: {error}")
     return jsonify({'error': 'Interner Serverfehler'}), 500
 
+# Authentication API
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """Erstelle neuen User (nur für Admin/Setup)"""
+    app_logger.debug("POST /api/auth/register aufgerufen")
+    data = request.get_json(force=True, silent=True)
+    if data is None:
+        raise ValidationError('JSON-Daten erforderlich')
+    if not data.get('username'):
+        raise ValidationError('Username ist erforderlich')
+    if not data.get('password'):
+        raise ValidationError('Passwort ist erforderlich')
+    
+    user_id = auth_service.create_user(data['username'], data['password'])
+    user = auth_service.find_user_by_id(user_id)
+    
+    return jsonify({
+        'message': 'User erfolgreich erstellt',
+        'user': user.to_dict()
+    }), 201
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """User Login mit Username/Password"""
+    app_logger.debug("POST /api/auth/login aufgerufen")
+    data = request.get_json(force=True, silent=True)
+    if data is None:
+        raise ValidationError('JSON-Daten erforderlich')
+    if not data.get('username'):
+        raise ValidationError('Username ist erforderlich')
+    if not data.get('password'):
+        raise ValidationError('Passwort ist erforderlich')
+    
+    user = auth_service.authenticate_user(data['username'], data['password'])
+    if not user:
+        app_logger.warning(f"Login fehlgeschlagen für Username: {data['username']}")
+        return jsonify({
+            'error': 'Ungültige Anmeldedaten',
+            'type': 'authentication_failed'
+        }), 401
+    
+    tokens = auth_service.create_tokens(user)
+    return jsonify(tokens)
+
+@app.route('/api/auth/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    """Refresh Access Token"""
+    app_logger.debug("POST /api/auth/refresh aufgerufen")
+    current_user_id = get_jwt_identity()
+    user = auth_service.find_user_by_id(int(current_user_id))
+    
+    if not user:
+        raise NotFoundError('User nicht gefunden')
+    
+    tokens = auth_service.create_tokens(user)
+    return jsonify(tokens)
+
+@app.route('/api/auth/logout', methods=['DELETE'])
+@jwt_required()
+def logout():
+    """User Logout - Token zur Blacklist hinzufügen"""
+    app_logger.debug("DELETE /api/auth/logout aufgerufen")
+    jti = get_jwt()['jti']
+    current_user_id = get_jwt_identity()
+    
+    auth_service.blacklist_token(jti)
+    app_logger.info(f"User {current_user_id} erfolgreich ausgeloggt")
+    
+    return jsonify({
+        'message': 'Erfolgreich ausgeloggt'
+    })
+
+@app.route('/api/auth/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    """Aktuelle User-Informationen abrufen"""
+    app_logger.debug("GET /api/auth/me aufgerufen")
+    current_user_id = get_jwt_identity()
+    user = auth_service.find_user_by_id(int(current_user_id))
+    
+    if not user:
+        raise NotFoundError('User nicht gefunden')
+    
+    return jsonify(user.to_dict())
+
+@app.route('/api/auth/users', methods=['GET'])
+@jwt_required()
+def get_users():
+    """Liste aller User (nur für authentifizierte User)"""
+    app_logger.debug("GET /api/auth/users aufgerufen")
+    users = auth_service.list_users()
+    return jsonify(users)
+
 # Lieferanten API
 @app.route('/api/lieferanten', methods=['GET'])
+@jwt_required()
 def get_lieferanten():
     app_logger.debug("GET /api/lieferanten aufgerufen")
     try:
@@ -69,6 +199,7 @@ def get_lieferanten():
         return jsonify({'error': 'Interner Serverfehler'}), 500
 
 @app.route('/api/lieferanten', methods=['POST'])
+@jwt_required()
 def create_lieferant():
     app_logger.debug("POST /api/lieferanten aufgerufen")
     data = request.get_json(force=True, silent=True)
@@ -88,6 +219,7 @@ def create_lieferant():
     }), 201
 
 @app.route('/api/lieferanten/<int:lieferant_id>', methods=['GET'])
+@jwt_required()
 def get_lieferant(lieferant_id):
     try:
         lieferant = inventory.lieferant_finden(lieferant_id)
@@ -103,6 +235,7 @@ def get_lieferant(lieferant_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/lieferanten/<int:lieferant_id>', methods=['PUT'])
+@jwt_required()
 def update_lieferant(lieferant_id):
     try:
         data = request.get_json(force=True, silent=True)
@@ -134,6 +267,7 @@ def update_lieferant(lieferant_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/lieferanten/<int:lieferant_id>', methods=['DELETE'])
+@jwt_required()
 def delete_lieferant(lieferant_id):
     try:
         # Prüfen ob Lieferant existiert
@@ -152,6 +286,7 @@ def delete_lieferant(lieferant_id):
 
 # Artikel API
 @app.route('/api/artikel', methods=['GET'])
+@jwt_required()
 def get_artikel():
     try:
         artikel = inventory.artikel_auflisten()
@@ -165,41 +300,33 @@ def get_artikel():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/artikel', methods=['POST'])
+@jwt_required()
 def create_artikel():
-    try:
-        data = request.get_json(force=True, silent=True)
-        if data is None:
-            return jsonify({'error': 'JSON-Daten erforderlich'}), 400
-        
-        required_fields = ['artikelnummer', 'bezeichnung', 'lieferant_id']
-        
-        if not data or not all(field in data for field in required_fields):
-            return jsonify({'error': 'Artikelnummer, Bezeichnung und Lieferant-ID sind erforderlich'}), 400
-        
-        # Prüfen ob Lieferant existiert
-        lieferant = inventory.lieferant_finden(data['lieferant_id'])
-        if not lieferant:
-            return jsonify({'error': 'Lieferant nicht gefunden'}), 400
-            
-        mindestmenge = data.get('mindestmenge', 1)
-        success = inventory.artikel_hinzufuegen(
-            data['artikelnummer'],
-            data['bezeichnung'],
-            data['lieferant_id'],
-            mindestmenge
-        )
-        
-        if not success:
-            return jsonify({'error': 'Artikel konnte nicht angelegt werden (bereits vorhanden?)'}), 400
-        
-        return jsonify({
-            'artikelnummer': data['artikelnummer'],
-            'bezeichnung': data['bezeichnung'],
-            'lieferant_id': data['lieferant_id'],
-            'mindestmenge': mindestmenge
-        }), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    app_logger.debug("POST /api/artikel aufgerufen")
+    data = request.get_json(force=True, silent=True)
+    if data is None:
+        raise ValidationError('JSON-Daten erforderlich')
+    
+    required_fields = ['artikelnummer', 'bezeichnung', 'lieferant_id']
+    if not data or not all(field in data for field in required_fields):
+        raise ValidationError('Artikelnummer, Bezeichnung und Lieferant-ID sind erforderlich')
+    
+    mindestmenge = data.get('mindestmenge', 1)
+    
+    # Die Validierung passiert jetzt in inventory_manager.artikel_hinzufuegen()
+    success = inventory.artikel_hinzufuegen(
+        data['artikelnummer'],
+        data['bezeichnung'],
+        data['lieferant_id'],
+        mindestmenge
+    )
+    
+    return jsonify({
+        'artikelnummer': data['artikelnummer'],
+        'bezeichnung': data['bezeichnung'],
+        'lieferant_id': data['lieferant_id'],
+        'mindestmenge': mindestmenge
+    }), 201
 
 @app.route('/api/artikel/<artikelnummer>', methods=['GET'])
 def get_artikel_detail(artikelnummer):

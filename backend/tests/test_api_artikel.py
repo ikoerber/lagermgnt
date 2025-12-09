@@ -1,13 +1,14 @@
 import pytest
+from auth_helper import client_with_auth
 
-def test_get_artikel_returns_list(client):
-    response = client.get('/api/artikel')
+def test_get_artikel_returns_list(client_with_auth):
+    response = client_with_auth.auth.authenticated_get('/api/artikel')
     assert response.status_code == 200
     assert isinstance(response.get_json(), list)
 
-def test_create_artikel_success(client):
+def test_create_artikel_success(client_with_auth):
     # Erst Lieferant anlegen
-    lieferant_response = client.post('/api/lieferanten', json={
+    lieferant_response = client_with_auth.auth.authenticated_post('/api/lieferanten', json={
         'name': 'Test Lieferant',
         'kontakt': 'test@test.de'
     })
@@ -20,7 +21,7 @@ def test_create_artikel_success(client):
         'lieferant_id': lieferant_id
     }
     
-    response = client.post('/api/artikel', json=artikel_data)
+    response = client_with_auth.auth.authenticated_post('/api/artikel', json=artikel_data)
     assert response.status_code == 201
     
     response_data = response.get_json()
@@ -28,59 +29,59 @@ def test_create_artikel_success(client):
     assert response_data['bezeichnung'] == artikel_data['bezeichnung']
     assert response_data['lieferant_id'] == artikel_data['lieferant_id']
 
-def test_create_artikel_missing_fields(client):
+def test_create_artikel_missing_fields(client_with_auth):
     # Unvollständige Daten
-    response = client.post('/api/artikel', json={
+    response = client_with_auth.auth.authenticated_post('/api/artikel', json={
         'artikelnummer': 'TEST-001'
     })
     assert response.status_code == 400
     assert 'error' in response.get_json()
 
-def test_create_artikel_duplicate_artikelnummer(client, sample_data):
+def test_create_artikel_duplicate_artikelnummer(client_with_auth):
     # Versuch, Artikel mit gleicher Nummer nochmal anzulegen
-    response = client.post('/api/artikel', json={
-        'artikelnummer': sample_data['artikelnummer'],
+    response = client_with_auth.auth.authenticated_post('/api/artikel', json={
+        'artikelnummer': 'TEST-001',
         'bezeichnung': 'Anderer Stuhl',
-        'lieferant_id': sample_data['lieferant_id']
+        'lieferant_id': 1
     })
     assert response.status_code == 400
     assert 'error' in response.get_json()
 
-def test_create_artikel_invalid_lieferant(client):
-    response = client.post('/api/artikel', json={
+def test_create_artikel_invalid_lieferant(client_with_auth):
+    response = client_with_auth.auth.authenticated_post('/api/artikel', json={
         'artikelnummer': 'INVALID-001',
         'bezeichnung': 'Test Artikel',
         'lieferant_id': 999
     })
     assert response.status_code == 400
 
-def test_get_artikel_after_create(client, sample_data):
-    response = client.get('/api/artikel')
+def test_get_artikel_after_create(client_with_auth):
+    response = client_with_auth.auth.authenticated_get('/api/artikel')
     assert response.status_code == 200
     
     artikel = response.get_json()
     assert len(artikel) == 1
-    assert artikel[0]['artikelnummer'] == sample_data['artikelnummer']
+    assert artikel[0]['artikelnummer'] == 'TEST-001'
     assert artikel[0]['bezeichnung'] == 'Test Stuhl'
     assert artikel[0]['lieferant_name'] == 'Test Möbel GmbH'
 
-def test_get_artikel_by_nummer_success(client, sample_data):
-    response = client.get(f'/api/artikel/{sample_data["artikelnummer"]}')
+def test_get_artikel_by_nummer_success(client_with_auth):
+    response = client_with_auth.auth.authenticated_get('/api/artikel/TEST-001')
     assert response.status_code == 200
     
     data = response.get_json()
-    assert data['artikelnummer'] == sample_data['artikelnummer']
+    assert data['artikelnummer'] == 'TEST-001'
     assert data['bezeichnung'] == 'Test Stuhl'
-    assert data['lieferant_id'] == sample_data['lieferant_id']
+    assert data['lieferant_id'] == 1
 
-def test_get_artikel_by_nummer_not_found(client):
-    response = client.get('/api/artikel/NICHT-VORHANDEN')
+def test_get_artikel_by_nummer_not_found(client_with_auth):
+    response = client_with_auth.auth.authenticated_get('/api/artikel/NICHT-VORHANDEN')
     assert response.status_code == 404
     assert 'error' in response.get_json()
 
-def test_create_multiple_artikel_same_lieferant(client):
+def test_create_multiple_artikel_same_lieferant(client_with_auth):
     # Lieferant anlegen
-    lieferant_response = client.post('/api/lieferanten', json={
+    lieferant_response = client_with_auth.auth.authenticated_post('/api/lieferanten', json={
         'name': 'Multi Artikel Lieferant'
     })
     lieferant_id = lieferant_response.get_json()['id']
@@ -93,11 +94,11 @@ def test_create_multiple_artikel_same_lieferant(client):
     ]
     
     for artikel in artikel_data:
-        response = client.post('/api/artikel', json=artikel)
+        response = client_with_auth.auth.authenticated_post('/api/artikel', json=artikel)
         assert response.status_code == 201
     
     # Alle Artikel abrufen
-    response = client.get('/api/artikel')
+    response = client_with_auth.auth.authenticated_get('/api/artikel')
     assert response.status_code == 200
     artikel_liste = response.get_json()
     
