@@ -1,17 +1,16 @@
 import pytest
-from auth_helper import client_with_auth
 
-def test_get_projekte_returns_list(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/projekte')
+def test_get_projekte_returns_list(auth_client):
+    response = auth_client.get('/api/projekte', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert isinstance(response.get_json(), list)
 
-def test_create_projekt_success(client_with_auth):
+def test_create_projekt_success(auth_client):
     # Kunde anlegen
-    kunde_response = client_with_auth.auth.authenticated_post('/api/kunden', json={
+    kunde_response = auth_client.post('/api/kunden', json={
         'name': 'Projekt Kunde',
         'kontakt': 'projekt@kunde.de'
-    })
+    }, headers=auth_client.auth_headers)
     kunde_id = kunde_response.get_json()['id']
     
     # Projekt anlegen
@@ -20,7 +19,7 @@ def test_create_projekt_success(client_with_auth):
         'kunde_id': kunde_id
     }
     
-    response = client_with_auth.auth.authenticated_post('/api/projekte', json=projekt_data)
+    response = auth_client.post('/api/projekte', json=projekt_data, headers=auth_client.auth_headers)
     assert response.status_code == 201
     
     response_data = response.get_json()
@@ -28,27 +27,27 @@ def test_create_projekt_success(client_with_auth):
     assert response_data['projektname'] == projekt_data['projektname']
     assert response_data['kunde_id'] == projekt_data['kunde_id']
 
-def test_create_projekt_missing_fields(client_with_auth):
+def test_create_projekt_missing_fields(auth_client):
     # Ohne Projektname
-    response = client_with_auth.auth.authenticated_post('/api/projekte', json={'kunde_id': 1})
+    response = auth_client.post('/api/projekte', json={'kunde_id': 1}, headers=auth_client.auth_headers)
     assert response.status_code == 400
     assert 'error' in response.get_json()
     
     # Ohne Kunde-ID
-    response = client_with_auth.auth.authenticated_post('/api/projekte', json={'projektname': 'Test Projekt'})
+    response = auth_client.post('/api/projekte', json={'projektname': 'Test Projekt'}, headers=auth_client.auth_headers)
     assert response.status_code == 400
     assert 'error' in response.get_json()
 
-def test_create_projekt_invalid_kunde(client_with_auth):
-    response = client_with_auth.auth.authenticated_post('/api/projekte', json={
+def test_create_projekt_invalid_kunde(auth_client):
+    response = auth_client.post('/api/projekte', json={
         'projektname': 'Unmögliches Projekt',
         'kunde_id': 999
-    })
-    assert response.status_code == 400
+    }, headers=auth_client.auth_headers)
+    assert response.status_code == 404  # NotFoundError for invalid kunde
 
-def test_get_projekte_after_create(client_with_auth):
+def test_get_projekte_after_create(auth_client):
     # Kunde anlegen
-    kunde_response = client_with_auth.auth.authenticated_post('/api/kunden', json={'name': 'Multi Projekt Kunde'})
+    kunde_response = auth_client.post('/api/kunden', json={'name': 'Multi Projekt Kunde'}, headers=auth_client.auth_headers)
     kunde_id = kunde_response.get_json()['id']
     
     # Mehrere Projekte anlegen
@@ -58,10 +57,10 @@ def test_get_projekte_after_create(client_with_auth):
     ]
     
     for projekt in projekte_data:
-        response = client_with_auth.auth.authenticated_post('/api/projekte', json=projekt)
+        response = auth_client.post('/api/projekte', json=projekt, headers=auth_client.auth_headers)
         assert response.status_code == 201
     
-    response = client_with_auth.auth.authenticated_get('/api/projekte')
+    response = auth_client.get('/api/projekte', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     projekte = response.get_json()
@@ -73,8 +72,8 @@ def test_get_projekte_after_create(client_with_auth):
     alpha_projekt = next(p for p in projekte if p['projektname'] == 'Projekt Alpha')
     assert alpha_projekt['kunde_name'] == 'Multi Projekt Kunde'
 
-def test_get_projekt_detail_success(client_with_auth):
-    response = client_with_auth.auth.authenticated_get(f'/api/projekte/{1}')
+def test_get_projekt_detail_success(auth_client, sample_data):
+    response = auth_client.get(f'/api/projekte/{sample_data["projekt_id"]}', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
@@ -84,11 +83,11 @@ def test_get_projekt_detail_success(client_with_auth):
     assert 'gesamtumsatz' in data
     assert data['gesamtumsatz'] == 0  # Noch keine Verkäufe
 
-def test_get_projekt_detail_not_found(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/projekte/999')
+def test_get_projekt_detail_not_found(auth_client):
+    response = auth_client.get('/api/projekte/999', headers=auth_client.auth_headers)
     assert response.status_code == 404
     assert 'error' in response.get_json()
 
-def test_create_projekt_empty_body(client_with_auth):
-    response = client_with_auth.auth.authenticated_post('/api/projekte', json={})
+def test_create_projekt_empty_body(auth_client):
+    response = auth_client.post('/api/projekte', json={}, headers=auth_client.auth_headers)
     assert response.status_code == 400

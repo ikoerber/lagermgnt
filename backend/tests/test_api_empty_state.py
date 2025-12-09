@@ -1,46 +1,45 @@
 import pytest
-from auth_helper import client_with_auth
 
-def test_get_lieferanten_empty_in_fresh_client(client_with_auth):
+def test_get_lieferanten_empty_in_fresh_client(auth_client):
     """Test mit neuem Client ohne sample_data"""
-    response = client_with_auth.auth.authenticated_get('/api/lieferanten')
+    response = auth_client.get('/api/lieferanten', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []
 
-def test_get_artikel_empty_in_fresh_client(client_with_auth):
+def test_get_artikel_empty_in_fresh_client(auth_client):
     """Test mit neuem Client ohne sample_data"""
-    response = client_with_auth.auth.authenticated_get('/api/artikel')
+    response = auth_client.get('/api/artikel', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []
 
-def test_get_kunden_empty_in_fresh_client(client_with_auth):
+def test_get_kunden_empty_in_fresh_client(auth_client):
     """Test mit neuem Client ohne sample_data"""
-    response = client_with_auth.auth.authenticated_get('/api/kunden')
+    response = auth_client.get('/api/kunden', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []
 
-def test_get_projekte_empty_in_fresh_client(client_with_auth):
+def test_get_projekte_empty_in_fresh_client(auth_client):
     """Test mit neuem Client ohne sample_data"""
-    response = client_with_auth.auth.authenticated_get('/api/projekte')
+    response = auth_client.get('/api/projekte', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []
 
-def test_get_lager_empty_in_fresh_client(client_with_auth):
+def test_get_lager_empty_in_fresh_client(auth_client):
     """Test mit neuem Client ohne sample_data"""
-    response = client_with_auth.auth.authenticated_get('/api/lager/bestand')
+    response = auth_client.get('/api/lager/bestand', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []
 
-def test_get_berichte_empty_in_fresh_client(client_with_auth):
+def test_get_berichte_empty_in_fresh_client(auth_client):
     """Test mit neuem Client ohne sample_data"""
-    response = client_with_auth.auth.authenticated_get('/api/berichte/lagerbestand')
+    response = auth_client.get('/api/berichte/lagerbestand', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []
     
-    response = client_with_auth.auth.authenticated_get('/api/berichte/projekte')
+    response = auth_client.get('/api/berichte/projekte', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []
     
-    response = client_with_auth.auth.authenticated_get('/api/berichte/lagerumschlag')
+    response = auth_client.get('/api/berichte/lagerumschlag', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert response.get_json() == []

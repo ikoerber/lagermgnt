@@ -1,17 +1,16 @@
 import pytest
-from auth_helper import client_with_auth
 
-def test_get_kunden_returns_list(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/kunden')
+def test_get_kunden_returns_list(auth_client):
+    response = auth_client.get('/api/kunden', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert isinstance(response.get_json(), list)
 
-def test_create_kunde_success(client_with_auth):
+def test_create_kunde_success(auth_client):
     data = {
         'name': 'Firma ABC GmbH',
         'kontakt': 'info@firma-abc.de'
     }
-    response = client_with_auth.auth.authenticated_post('/api/kunden', json=data)
+    response = auth_client.post('/api/kunden', json=data, headers=auth_client.auth_headers)
     assert response.status_code == 201
     
     response_data = response.get_json()
@@ -19,22 +18,22 @@ def test_create_kunde_success(client_with_auth):
     assert response_data['name'] == data['name']
     assert response_data['kontakt'] == data['kontakt']
 
-def test_create_kunde_without_name(client_with_auth):
+def test_create_kunde_without_name(auth_client):
     data = {'kontakt': 'test@test.de'}
-    response = client_with_auth.auth.authenticated_post('/api/kunden', json=data)
+    response = auth_client.post('/api/kunden', json=data, headers=auth_client.auth_headers)
     assert response.status_code == 400
     assert 'error' in response.get_json()
 
-def test_create_kunde_minimal_data(client_with_auth):
+def test_create_kunde_minimal_data(auth_client):
     data = {'name': 'Minimaler Kunde'}
-    response = client_with_auth.auth.authenticated_post('/api/kunden', json=data)
+    response = auth_client.post('/api/kunden', json=data, headers=auth_client.auth_headers)
     assert response.status_code == 201
     
     response_data = response.get_json()
     assert response_data['name'] == 'Minimaler Kunde'
     assert response_data['kontakt'] == ''
 
-def test_get_kunden_after_create(client_with_auth):
+def test_get_kunden_after_create(auth_client):
     # Mehrere Kunden anlegen
     kunden_data = [
         {'name': 'Kunde A', 'kontakt': 'a@test.de'},
@@ -43,10 +42,10 @@ def test_get_kunden_after_create(client_with_auth):
     ]
     
     for kunde in kunden_data:
-        response = client_with_auth.auth.authenticated_post('/api/kunden', json=kunde)
+        response = auth_client.post('/api/kunden', json=kunde, headers=auth_client.auth_headers)
         assert response.status_code == 201
     
-    response = client_with_auth.auth.authenticated_get('/api/kunden')
+    response = auth_client.get('/api/kunden', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     kunden = response.get_json()
@@ -55,10 +54,10 @@ def test_get_kunden_after_create(client_with_auth):
     assert 'Kunde B' in kunden_namen
     assert 'Kunde C' in kunden_namen
 
-def test_create_kunde_empty_body(client_with_auth):
-    response = client_with_auth.auth.authenticated_post('/api/kunden', json={})
+def test_create_kunde_empty_body(auth_client):
+    response = auth_client.post('/api/kunden', json={}, headers=auth_client.auth_headers)
     assert response.status_code == 400
 
-def test_create_kunde_no_json(client_with_auth):
-    response = client_with_auth.auth.authenticated_post('/api/kunden')
+def test_create_kunde_no_json(auth_client):
+    response = auth_client.post('/api/kunden', headers=auth_client.auth_headers)
     assert response.status_code == 400

@@ -1,20 +1,19 @@
 import pytest
-from auth_helper import client_with_auth
 
-def test_get_lagerbestand_bericht_returns_list(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/berichte/lagerbestand')
+def test_get_lagerbestand_bericht_returns_list(auth_client):
+    response = auth_client.get('/api/berichte/lagerbestand', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert isinstance(response.get_json(), list)
 
-def test_get_lagerbestand_bericht_zusammenfassung(client_with_auth):
+def test_get_lagerbestand_bericht_zusammenfassung(auth_client, sample_data):
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 10,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
-    response = client_with_auth.auth.authenticated_get('/api/berichte/lagerbestand')
+    response = auth_client.get('/api/berichte/lagerbestand', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
@@ -24,7 +23,7 @@ def test_get_lagerbestand_bericht_zusammenfassung(client_with_auth):
     assert 'durchschnittspreis' in data[0]
     assert 'gesamtwert' in data[0]
 
-def test_get_lagerbestand_bericht_detailliert(client_with_auth):
+def test_get_lagerbestand_bericht_detailliert(auth_client, sample_data):
     # Mehrere Eingänge
     eingaenge = [
         {'menge': 10, 'einkaufspreis': 45.00, 'einlagerungsdatum': '2024-01-10'},
@@ -32,12 +31,12 @@ def test_get_lagerbestand_bericht_detailliert(client_with_auth):
     ]
     
     for eingang in eingaenge:
-        client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-            'artikelnummer': 'TEST-001',
+        auth_client.post('/api/lager/eingang', json={
+            'artikelnummer': sample_data['artikelnummer'],
             **eingang
-        })
+        }, headers=auth_client.auth_headers)
     
-    response = client_with_auth.auth.authenticated_get('/api/berichte/lagerbestand?detailliert=true')
+    response = auth_client.get('/api/berichte/lagerbestand?detailliert=true', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
@@ -53,27 +52,27 @@ def test_get_lagerbestand_bericht_detailliert(client_with_auth):
         assert 'einlagerungsdatum' in eintrag
         assert 'gesamtwert' in eintrag
 
-def test_get_projekte_bericht_returns_list(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/berichte/projekte')
+def test_get_projekte_bericht_returns_list(auth_client):
+    response = auth_client.get('/api/berichte/projekte', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert isinstance(response.get_json(), list)
 
-def test_get_projekte_bericht_with_data(client_with_auth):
+def test_get_projekte_bericht_with_data(auth_client, sample_data):
     # Lagereingang und Verkauf
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 10,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
-    client_with_auth.auth.authenticated_post('/api/verkauf', json={
+    auth_client.post('/api/verkauf', json={
         'projekt_id': sample_data['projekt_id'],
-        'artikelnummer': 'TEST-001',
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 3,
         'verkaufspreis': 79.99
-    })
+    }, headers=auth_client.auth_headers)
     
-    response = client_with_auth.auth.authenticated_get('/api/berichte/projekte')
+    response = auth_client.get('/api/berichte/projekte', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
@@ -84,8 +83,8 @@ def test_get_projekte_bericht_with_data(client_with_auth):
     assert data[0]['anzahl_verkaeufe'] == 1
     assert abs(data[0]['gesamtumsatz'] - 239.97) < 0.01  # 3 * 79.99, mit Rundungstoleranz
 
-def test_get_gewinn_analyse_empty(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/berichte/gewinn')
+def test_get_gewinn_analyse_empty(auth_client):
+    response = auth_client.get('/api/berichte/gewinn', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
@@ -95,23 +94,23 @@ def test_get_gewinn_analyse_empty(client_with_auth):
     assert data['gesamtkosten'] == 0
     assert data['gesamtgewinn'] == 0
 
-def test_get_gewinn_analyse_with_sales(client_with_auth):
+def test_get_gewinn_analyse_with_sales(auth_client, sample_data):
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 10,
         'einkaufspreis': 50.00
-    })
+    }, headers=auth_client.auth_headers)
     
     # Verkauf
-    client_with_auth.auth.authenticated_post('/api/verkauf', json={
+    auth_client.post('/api/verkauf', json={
         'projekt_id': sample_data['projekt_id'],
-        'artikelnummer': 'TEST-001',
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 4,
         'verkaufspreis': 80.00
-    })
+    }, headers=auth_client.auth_headers)
     
-    response = client_with_auth.auth.authenticated_get('/api/berichte/gewinn')
+    response = auth_client.get('/api/berichte/gewinn', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
@@ -132,75 +131,75 @@ def test_get_gewinn_analyse_with_sales(client_with_auth):
     assert data['gesamtgewinn'] == 120.00
     assert data['gesamtgewinnmarge'] == 37.5
 
-def test_get_gewinn_analyse_specific_projekt(client_with_auth):
+def test_get_gewinn_analyse_specific_projekt(auth_client, sample_data):
     # Setup für zwei Projekte
-    kunde2_response = client_with_auth.auth.authenticated_post('/api/kunden', json={'name': 'Kunde 2'})
+    kunde2_response = auth_client.post('/api/kunden', json={'name': 'Kunde 2'}, headers=auth_client.auth_headers)
     kunde2_id = kunde2_response.get_json()['id']
     
-    projekt2_response = client_with_auth.auth.authenticated_post('/api/projekte', json={
+    projekt2_response = auth_client.post('/api/projekte', json={
         'projektname': 'Projekt 2',
         'kunde_id': kunde2_id
-    })
+    }, headers=auth_client.auth_headers)
     projekt2_id = projekt2_response.get_json()['id']
     
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 20,
         'einkaufspreis': 50.00
-    })
+    }, headers=auth_client.auth_headers)
     
     # Verkäufe in beiden Projekten
-    client_with_auth.auth.authenticated_post('/api/verkauf', json={
+    auth_client.post('/api/verkauf', json={
         'projekt_id': sample_data['projekt_id'],
-        'artikelnummer': 'TEST-001',
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 3,
         'verkaufspreis': 80.00
-    })
+    }, headers=auth_client.auth_headers)
     
-    client_with_auth.auth.authenticated_post('/api/verkauf', json={
+    auth_client.post('/api/verkauf', json={
         'projekt_id': projekt2_id,
-        'artikelnummer': 'TEST-001',
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 5,
         'verkaufspreis': 85.00
-    })
+    }, headers=auth_client.auth_headers)
     
     # Gewinn-Analyse nur für erstes Projekt
-    response = client_with_auth.auth.authenticated_get(f'/api/berichte/gewinn?projekt_id={1}')
+    response = auth_client.get(f'/api/berichte/gewinn?projekt_id={1}', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
     assert data['gesamtumsatz'] == 240.00  # Nur erstes Projekt: 3 * 80
     
     # Gewinn-Analyse für alle Projekte
-    response = client_with_auth.auth.authenticated_get('/api/berichte/gewinn')
+    response = auth_client.get('/api/berichte/gewinn', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
     assert data['gesamtumsatz'] == 665.00  # 3*80 + 5*85 = 240 + 425
 
-def test_get_lagerumschlag_returns_list(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/berichte/lagerumschlag')
+def test_get_lagerumschlag_returns_list(auth_client):
+    response = auth_client.get('/api/berichte/lagerumschlag', headers=auth_client.auth_headers)
     assert response.status_code == 200
     assert isinstance(response.get_json(), list)
 
-def test_get_lagerumschlag_with_data(client_with_auth):
+def test_get_lagerumschlag_with_data(auth_client, sample_data):
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 20,
         'einkaufspreis': 50.00
-    })
+    }, headers=auth_client.auth_headers)
     
     # Verkauf
-    client_with_auth.auth.authenticated_post('/api/verkauf', json={
+    auth_client.post('/api/verkauf', json={
         'projekt_id': sample_data['projekt_id'],
-        'artikelnummer': 'TEST-001',
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 8,
         'verkaufspreis': 80.00
-    })
+    }, headers=auth_client.auth_headers)
     
-    response = client_with_auth.auth.authenticated_get('/api/berichte/lagerumschlag')
+    response = auth_client.get('/api/berichte/lagerumschlag', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()
@@ -213,8 +212,8 @@ def test_get_lagerumschlag_with_data(client_with_auth):
     assert umschlag['anzahl_verkaeufe'] == 1
     assert umschlag['umschlagrate'] == 8/12  # verkauft/lager
 
-def test_api_status(client_with_auth):
-    response = client_with_auth.auth.authenticated_get('/api/status')
+def test_api_status(auth_client):
+    response = auth_client.get('/api/status', headers=auth_client.auth_headers)
     assert response.status_code == 200
     
     data = response.get_json()

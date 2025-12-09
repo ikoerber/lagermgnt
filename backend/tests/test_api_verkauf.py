@@ -1,25 +1,24 @@
 import pytest
-from auth_helper import client_with_auth
 from datetime import datetime
 
-def test_verkauf_success(client_with_auth):
+def test_verkauf_success(auth_client, sample_data):
     # Erst Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 10,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
     # Dann Verkauf
     verkauf_data = {
-        'projekt_id': 1,
-        'artikelnummer': 'TEST-001',
+        'projekt_id': sample_data['projekt_id'],
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 3,
         'verkaufspreis': 79.99,
         'verkaufsdatum': '2024-01-20'
     }
     
-    response = client_with_auth.auth.authenticated_post('/api/verkauf', json=verkauf_data)
+    response = auth_client.post('/api/verkauf', json=verkauf_data, headers=auth_client.auth_headers)
     assert response.status_code == 201
     
     response_data = response.get_json()
@@ -29,59 +28,59 @@ def test_verkauf_success(client_with_auth):
     assert response_data['verkaufte_menge'] == verkauf_data['verkaufte_menge']
     assert response_data['verkaufspreis'] == verkauf_data['verkaufspreis']
 
-def test_verkauf_without_date(client_with_auth):
+def test_verkauf_without_date(auth_client, sample_data):
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 5,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
     # Verkauf ohne Datum
     verkauf_data = {
-        'projekt_id': 1,
-        'artikelnummer': 'TEST-001',
+        'projekt_id': sample_data['projekt_id'],
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 2,
         'verkaufspreis': 79.99
     }
     
-    response = client_with_auth.auth.authenticated_post('/api/verkauf', json=verkauf_data)
+    response = auth_client.post('/api/verkauf', json=verkauf_data, headers=auth_client.auth_headers)
     assert response.status_code == 201
     
     response_data = response.get_json()
     assert response_data['verkaufsdatum'] == datetime.now().strftime("%Y-%m-%d")
 
-def test_verkauf_insufficient_stock(client_with_auth):
+def test_verkauf_insufficient_stock(auth_client, sample_data):
     # Nur 5 Stück einlagern
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 5,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
     # Versuchen 10 Stück zu verkaufen
     verkauf_data = {
-        'projekt_id': 1,
-        'artikelnummer': 'TEST-001',
+        'projekt_id': sample_data['projekt_id'],
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 10,
         'verkaufspreis': 79.99
     }
     
-    response = client_with_auth.auth.authenticated_post('/api/verkauf', json=verkauf_data)
-    assert response.status_code == 400
+    response = auth_client.post('/api/verkauf', json=verkauf_data, headers=auth_client.auth_headers)
+    assert response.status_code == 500  # LagerError for insufficient stock
     assert 'nicht genügend' in response.get_json()['error'].lower()
 
-def test_verkauf_missing_fields(client_with_auth):
+def test_verkauf_missing_fields(auth_client):
     # Ohne Projekt-ID
-    response = client_with_auth.auth.authenticated_post('/api/verkauf', json={
+    response = auth_client.post('/api/verkauf', json={
         'artikelnummer': 'TEST-001',
         'verkaufte_menge': 1,
         'verkaufspreis': 79.99
-    })
+    }, headers=auth_client.auth_headers)
     assert response.status_code == 400
     assert 'error' in response.get_json()
 
-def test_verkauf_fifo_principle(client_with_auth):
+def test_verkauf_fifo_principle(auth_client, sample_data):
     # Mehrere Lagereingänge zu verschiedenen Preisen und Zeiten
     eingaenge = [
         {'menge': 10, 'einkaufspreis': 45.00, 'einlagerungsdatum': '2024-01-10'},
@@ -90,22 +89,22 @@ def test_verkauf_fifo_principle(client_with_auth):
     ]
     
     for eingang in eingaenge:
-        client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-            'artikelnummer': 'TEST-001',
+        auth_client.post('/api/lager/eingang', json={
+            'artikelnummer': sample_data['artikelnummer'],
             **eingang
-        })
+        }, headers=auth_client.auth_headers)
     
     # 15 Stück verkaufen (sollte 10 vom ersten + 5 vom zweiten Eingang nehmen)
-    response = client_with_auth.auth.authenticated_post('/api/verkauf', json={
-        'projekt_id': 1,
-        'artikelnummer': 'TEST-001',
+    response = auth_client.post('/api/verkauf', json={
+        'projekt_id': sample_data['projekt_id'],
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 15,
         'verkaufspreis': 79.99
-    })
+    }, headers=auth_client.auth_headers)
     assert response.status_code == 201
     
     # Verbleibenden Bestand prüfen (mit Zero-Einträgen)
-    response = client_with_auth.auth.authenticated_get('/api/lager/bestand/TEST-001?include_zero=true')
+    response = auth_client.get(f'/api/lager/bestand/{sample_data["artikelnummer"]}?include_zero=true', headers=auth_client.auth_headers)
     bestaende = response.get_json()
     
     # Erster Bestand sollte 0 sein
@@ -114,51 +113,51 @@ def test_verkauf_fifo_principle(client_with_auth):
     verfuegbar = [b['verfuegbare_menge'] for b in sorted(bestaende, key=lambda x: x['einlagerungsdatum'])]
     assert verfuegbar == [0, 5, 10]
 
-def test_verkauf_complete_stock_depletion(client_with_auth):
+def test_verkauf_complete_stock_depletion(auth_client, sample_data):
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 10,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
     # Kompletten Bestand verkaufen
-    response = client_with_auth.auth.authenticated_post('/api/verkauf', json={
-        'projekt_id': 1,
-        'artikelnummer': 'TEST-001',
+    response = auth_client.post('/api/verkauf', json={
+        'projekt_id': sample_data['projekt_id'],
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 10,
         'verkaufspreis': 79.99
-    })
+    }, headers=auth_client.auth_headers)
     assert response.status_code == 201
     
     # Bestand sollte leer sein
-    response = client_with_auth.auth.authenticated_get('/api/lager/bestand')
+    response = auth_client.get('/api/lager/bestand', headers=auth_client.auth_headers)
     assert response.get_json() == []
 
-def test_verkauf_invalid_projekt(client_with_auth):
+def test_verkauf_invalid_projekt(auth_client, sample_data):
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 5,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
     # Verkauf mit ungültiger Projekt-ID
-    response = client_with_auth.auth.authenticated_post('/api/verkauf', json={
+    response = auth_client.post('/api/verkauf', json={
         'projekt_id': 999,
-        'artikelnummer': 'TEST-001',
+        'artikelnummer': sample_data['artikelnummer'],
         'verkaufte_menge': 1,
         'verkaufspreis': 79.99
-    })
-    assert response.status_code == 400
+    }, headers=auth_client.auth_headers)
+    assert response.status_code == 404  # NotFoundError for invalid projekt
 
-def test_multiple_verkaeufe_same_projekt(client_with_auth):
+def test_multiple_verkaeufe_same_projekt(auth_client, sample_data):
     # Lagereingang
-    client_with_auth.auth.authenticated_post('/api/lager/eingang', json={
-        'artikelnummer': 'TEST-001',
+    auth_client.post('/api/lager/eingang', json={
+        'artikelnummer': sample_data['artikelnummer'],
         'menge': 20,
         'einkaufspreis': 49.99
-    })
+    }, headers=auth_client.auth_headers)
     
     # Mehrere Verkäufe
     verkaeufe = [
@@ -168,15 +167,15 @@ def test_multiple_verkaeufe_same_projekt(client_with_auth):
     ]
     
     for verkauf in verkaeufe:
-        response = client_with_auth.auth.authenticated_post('/api/verkauf', json={
-            'projekt_id': 1,
-            'artikelnummer': 'TEST-001',
+        response = auth_client.post('/api/verkauf', json={
+            'projekt_id': sample_data['projekt_id'],
+            'artikelnummer': sample_data['artikelnummer'],
             **verkauf
-        })
+        }, headers=auth_client.auth_headers)
         assert response.status_code == 201
     
     # Projekt-Details prüfen
-    response = client_with_auth.auth.authenticated_get(f'/api/projekte/{1}')
+    response = auth_client.get(f'/api/projekte/{sample_data["projekt_id"]}', headers=auth_client.auth_headers)
     projekt_data = response.get_json()
     assert len(projekt_data['verkaeufe']) == 3
     
