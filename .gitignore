@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+*/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -53,12 +54,23 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Backend Virtual Environment (spezifisch)
 backend/bin/
 backend/include/
 backend/lib/
 backend/lib64/
 backend/share/
 backend/pyvenv.cfg
+
+# Aber backend/ Python-Code SOLL committed werden
+!backend/*.py
+!backend/tests/
+!backend/*.md
+!backend/*.txt
+!backend/*.ini
+!backend/*.png
+!backend/*.sh
 
 # IDEs
 .vscode/
