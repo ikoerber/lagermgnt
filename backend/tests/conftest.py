@@ -3,13 +3,16 @@ import os
 import tempfile
 import sys
 import json
+import uuid
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set test environment before importing app
 os.environ['FLASK_ENV'] = 'testing'
 
-from app import app, inventory, reports, auth_service
+from app import app, auth_service
+from inventory_manager import InventoryManager
+from reports import ReportGenerator
 from database import Database
 
 @pytest.fixture
@@ -19,14 +22,67 @@ def client():
     app.config['TESTING'] = True
     app.config['JWT_SECRET_KEY'] = 'test-secret-key'
     
-    # Globale Instanzen für Tests patchen
+    # Test-Instanzen erstellen
     test_database = Database(db_path)
-    inventory.db = test_database
-    reports.db = test_database
-    auth_service.db = test_database
+    
+    # Create fresh instances for this test
+    test_inventory = InventoryManager()
+    test_inventory.db = test_database
+    test_reports = ReportGenerator()
+    test_reports.db = test_database
+    test_auth_service = auth_service.__class__()  # Create fresh instance
+    test_auth_service.db = test_database
+    
+    # Patch the blueprint modules for each test
+    import api.auth
+    import api.lieferanten
+    import api.artikel
+    import api.kunden
+    import api.projekte
+    import api.lager
+    import api.verkauf
+    import api.berichte
+    
+    # Store original instances to restore later
+    original_instances = {
+        'auth_service': api.auth.auth_service,
+        'lieferanten_inventory': api.lieferanten.inventory,
+        'artikel_inventory': api.artikel.inventory,
+        'kunden_inventory': api.kunden.inventory,
+        'projekte_inventory': api.projekte.inventory,
+        'projekte_reports': api.projekte.reports,
+        'lager_inventory': api.lager.inventory,
+        'verkauf_inventory': api.verkauf.inventory,
+        'berichte_inventory': api.berichte.inventory,
+        'berichte_reports': api.berichte.reports,
+    }
+    
+    # Patch all blueprint modules with test instances
+    api.auth.auth_service = test_auth_service
+    api.lieferanten.inventory = test_inventory
+    api.artikel.inventory = test_inventory
+    api.kunden.inventory = test_inventory
+    api.projekte.inventory = test_inventory
+    api.projekte.reports = test_reports
+    api.lager.inventory = test_inventory
+    api.verkauf.inventory = test_inventory
+    api.berichte.inventory = test_inventory
+    api.berichte.reports = test_reports
     
     with app.test_client() as client:
         yield client
+    
+    # Restore original instances
+    api.auth.auth_service = original_instances['auth_service']
+    api.lieferanten.inventory = original_instances['lieferanten_inventory']
+    api.artikel.inventory = original_instances['artikel_inventory']
+    api.kunden.inventory = original_instances['kunden_inventory']
+    api.projekte.inventory = original_instances['projekte_inventory']
+    api.projekte.reports = original_instances['projekte_reports']
+    api.lager.inventory = original_instances['lager_inventory']
+    api.verkauf.inventory = original_instances['verkauf_inventory']
+    api.berichte.inventory = original_instances['berichte_inventory']
+    api.berichte.reports = original_instances['berichte_reports']
     
     os.close(db_fd)
     os.unlink(db_path)
@@ -42,9 +98,10 @@ def test_db():
 @pytest.fixture
 def auth_client(client):
     """Client with authentication setup"""
-    # Create test user
+    # Create test user with unique username per test
+    unique_username = f'testuser_{uuid.uuid4().hex[:8]}'
     user_data = {
-        'username': 'testuser',
+        'username': unique_username,
         'password': 'password123'
     }
     

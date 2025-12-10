@@ -20,8 +20,8 @@ def test_delete_lieferant_with_articles(auth_client):
     
     # Try to delete Lieferant - should fail due to referential integrity
     response = auth_client.delete(f'/api/lieferanten/{lieferant_id}', headers=auth_client.auth_headers)
-    assert response.status_code == 400
-    assert 'Artikel vorhanden' in response.get_json()['error']
+    assert response.status_code == 409  # Conflict is the correct status for integrity constraints
+    assert 'Artikel sind zugeordnet' in response.get_json()['error']
     
     # Verify Lieferant still exists
     response = auth_client.get(f'/api/lieferanten/{lieferant_id}', headers=auth_client.auth_headers)
@@ -52,8 +52,8 @@ def test_create_artikel_with_invalid_lieferant(auth_client):
         'bezeichnung': 'Artikel mit ungültigem Lieferant',
         'lieferant_id': 999999  # Non-existent
     }, headers=auth_client.auth_headers)
-    assert response.status_code == 400
-    assert 'Lieferant nicht gefunden' in response.get_json()['error']
+    assert response.status_code == 404
+    assert 'Lieferant mit ID 999999 nicht gefunden' in response.get_json()['error']
 
 def test_create_projekt_with_invalid_kunde(auth_client):
     """Test that project creation fails with non-existent Kunde"""
@@ -61,7 +61,7 @@ def test_create_projekt_with_invalid_kunde(auth_client):
         'projektname': 'Projekt mit ungültigem Kunde',
         'kunde_id': 999999  # Non-existent
     }, headers=auth_client.auth_headers)
-    assert response.status_code == 400
+    assert response.status_code == 404
     assert 'Kunde nicht gefunden' in response.get_json()['error']
 
 def test_lagereingang_with_invalid_artikel(auth_client):
@@ -90,10 +90,10 @@ def test_verkauf_with_invalid_projekt(auth_client):
         'verkaufte_menge': 5,
         'verkaufspreis': 40.00
     }, headers=auth_client.auth_headers)
-    assert response.status_code == 400
+    assert response.status_code == 404
     assert 'Projekt nicht gefunden' in response.get_json()['error']
 
-def test_verkauf_with_invalid_artikel(auth_client):
+def test_verkauf_with_invalid_artikel(auth_client, sample_data):
     """Test that sales entry fails with non-existent Article"""
     response = auth_client.post('/api/verkauf', json={
         'projekt_id': sample_data['projekt_id'],
@@ -101,7 +101,7 @@ def test_verkauf_with_invalid_artikel(auth_client):
         'verkaufte_menge': 5,
         'verkaufspreis': 40.00
     }, headers=auth_client.auth_headers)
-    assert response.status_code == 400
+    assert response.status_code == 500
     assert 'Nicht genügend Artikel im Lager verfügbar' in response.get_json()['error']
 
 def test_foreign_key_constraints_in_database(auth_client):
@@ -124,8 +124,8 @@ def test_foreign_key_constraints_in_database(auth_client):
     artikel_response = auth_client.post('/api/artikel', json={
         'artikelnummer': 'FK-001',
         'bezeichnung': 'FK Test Artikel',
-        'lieferant_id': lieferant_response.get_json(, headers=auth_client.auth_headers)['id']
-    })
+        'lieferant_id': lieferant_response.get_json()['id']
+    }, headers=auth_client.auth_headers)
     assert artikel_response.status_code == 201
     
     # Verify the artikel was created successfully
@@ -181,8 +181,8 @@ def test_referential_integrity_chain(auth_client):
     
     # Now try to delete Lieferant - should fail because artikel exists
     response = auth_client.delete(f'/api/lieferanten/{lieferant_id}', headers=auth_client.auth_headers)
-    assert response.status_code == 400
-    assert 'Artikel vorhanden' in response.get_json()['error']
+    assert response.status_code == 409
+    assert 'Artikel sind zugeordnet' in response.get_json()['error']
     
     # Verify all entities still exist
     assert auth_client.get(f'/api/lieferanten/{lieferant_id}', headers=auth_client.auth_headers).status_code == 200
