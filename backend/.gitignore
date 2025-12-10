@@ -1,0 +1,19 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+# Virtual environment directories
+bin/
+include/
+lib/
+lib64/
+share/
+pyvenv.cfg
+
+# But keep source code
+!*.py
+!api/
+!tests/
+!*.md
+!*.txt
+!*.ini
+!*.png
+!*.sh
+!*.db

@@ -65,6 +65,7 @@ backend/pyvenv.cfg
 
 # Aber backend/ Python-Code SOLL committed werden
 !backend/*.py
+!backend/api/
 !backend/tests/
 !backend/*.md
 !backend/*.txt
